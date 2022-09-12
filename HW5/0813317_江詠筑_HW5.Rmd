@@ -1,0 +1,326 @@
+---
+title: "0813317_江詠筑_HW5"
+author: "江詠筑"
+date: "2021/10/22"
+output: html_document
+---
+
+## Do Exploratory Data Analysis(EDA) on BlueBikes Sharing System(BSS) demand in Boston
+這次作業我嘗試找更大的數據進行探索式分析，不過選擇的主題依然是共享單車的需求，跟之前的資料庫的差別在於這個是以一次單車租借為一個紀錄，所以檔案相當龐大，是之前資料量的數千倍(例如:平均每小時有約4000台單車租借紀錄，之前是4000台算一筆，現在直接是4000筆)。
+
+### part A. Basic
+
+#### 1.Find a data set you want to analyze.
+
+> There are two data sets I want to analysis :
+
+> * bluebikes_tripdata_2019.csv which has approximately 2.52 million trips
+> * bluebikes_tripdata_2020.csv which has approximately 2 million trips.
+
+我會選擇這兩個資料庫的原因是在HW1我就有規劃要對共享單車的需求「站點」資訊做預測，以進行其後的貨車調度再配送為目標，但前幾次的資料庫並沒有單車的期使站與終點站資訊，所以我這次改為選擇這個包含站點資訊的新資料庫進行分析。雖然少了一些之前擁有的天氣及溫度濕度等維度特徵，但多了站點資訊，期望可以在舊資料庫的基礎上加上新資料庫進而達成站點分析的計畫目標。
+
+> The dataset is from [Kaggle](https://www.kaggle.com/jackdaoud/bluebikes-in-boston) and [BlueBikes](https://www.bluebikes.com/) can be find source of this data set [here]()
+
+```{r}
+# Loading necessary packages and datasets
+library(dplyr)
+library(plyr)
+library(lubridate)
+library(plotly)
+library(ggplot2)
+library("geosphere")
+library("gridExtra") 
+library("ggmap")
+library(htmlwidgets)
+library('IRdisplay')
+
+bluebikes_2019 <- read.csv("bluebikes_tripdata_2019.csv")
+bluebikes_2020 <- read.csv("bluebikes_tripdata_2020.csv")
+```
+
+
+> **Context**
+
+> BlueBIkes is a bike sharing system born in July 2011 in Metro Boston. It has grown exponentially over the years:
+> * From 3,203 annual members in 2011 to 21,261 in 2019
+> * From 610 bicycles in 2011 to 3,500+ in 2019
+>The system is simple. A user can pick up a bike at any station dock, ride it for a specific amount of time, and then return it to any station for re-docking.
+
+#### 2.Do EDA on this data set, like summary statistics, box plot, and histogram…  Detect if there have any outliers in this data set. 
+
+Step 1 Find missing data 分別對兩個資料庫進行資料前處理
+```{r}
+# Checking missing values on bluebikes_2019
+
+head(bluebikes_2019, 5)
+dim(bluebikes_2019)
+
+missing_values <- function(df) {
+    for (c in colnames(df)) {
+        print(sum(is.na(df[[c]])))
+    }
+}
+
+missing_values(bluebikes_2019)
+```
+
+可以觀察到2019的2522771X17筆資料中，17行特徵中都沒有misssing data，接下來看2020
+
+```{r}
+# Checking missing values on bluebikes_2020
+
+head(bluebikes_2020, 5)
+dim(bluebikes_2020)
+
+missing_values(bluebikes_2020)
+```
+
+我瀏覽資料時發現在postal code , bithday year 和gender三個變數中都有些漏填的資料，可能跟個人隱私考量而不願填寫有關。
+對於這個問題我選擇直接刪除這幾行，並以站點資料與需求數作為主要研究方向。
+
+
+```{r}
+# Getting rid of unnecesary columns
+
+bluebikes_2019 <- bluebikes_2019 %>%
+select(-c(`gender`, `birth.year`))
+
+bluebikes_2020 <- bluebikes_2020 %>%
+select(-c(`gender`, `birth.year`, `postal.code`))
+
+# Checking the result
+
+colnames(bluebikes_2019)
+colnames(bluebikes_2020)
+```
+
+如此一來兩個資料庫的維度也可以相同了(本來有一個postal code維度的差異)
+於是我們可以合併這兩個資料庫
+
+```{r}
+# Combining datasets into united dataset
+
+bluebikes_united <- rbind(bluebikes_2019, bluebikes_2020)
+
+# Changing colnames to proper format
+
+new_colname <- c("tripduration", "start_time", "stop_time", "start_station_id", "start_station_name", "start_station_latitude", 
+                 "start_station_longitude", "end_station_id", "end_station_name", "end_station_latitude", "end_station_longitude",
+                 "bike_id", "user_type", "year", "month")
+
+colnames(bluebikes_united) <- new_colname
+
+head(bluebikes_united, 5)
+unique(bluebikes_united$year)
+```
+
+Step 2 Data Analysis 
+```{r}
+# Changing the year column to character values
+
+bluebikes_united <- bluebikes_united %>%
+mutate(year = as.character(year))
+
+# Categorize the number of customers and subscribers by year
+
+customer_vs_subscriber <- bluebikes_united %>%
+group_by(year) %>%
+summarise(num_customer = sum(user_type == "Customer"),
+          num_subscriber = sum(user_type == "Subscriber")
+         )
+
+# Visualizing the comparison between customer and subscriber
+
+plot_ly(data = customer_vs_subscriber,
+                                             x = ~year,
+                                             y = ~num_customer,
+                                             type = "bar",
+                                             name = "Number of Customers",
+                                             width = 1
+                                            ) %>%
+                                     add_trace(y = ~num_subscriber,
+                                               name = "Number of Subscribers"
+                                              ) %>%
+                                     layout(title = "Number of Customers and Subscribers in 2019 and 2020",
+                                            xaxis = list(title = "Year"),
+                                            yaxis = list(title = "Customers VS. Subscribers"), barmode = "group")
+
+```
+
+可以看到在2019到2020年，會員數量明顯減少，可能跟疫情影響有關；另一方面，散戶的數量有些微上升的趨勢，說明這個共享單車系統還是有許多還沒變成會員的潛在目標顧客。
+
+接下來是站點資料的EDA
+```{r}
+# Figuring out which start stations are the most popular and the least popular in 2019
+
+popular_start_stations_2019 <- bluebikes_united %>%
+filter(year == "2019") %>%
+group_by(start_station_name) %>%
+summarise(number_of_users = n())
+
+head(popular_start_stations_2019 %>% arrange(desc(number_of_users)), 3)
+head(popular_start_stations_2019 %>% arrange(number_of_users), 3)
+```
+
+用直方圖畫出2019最熱門的十個站
+```{r}
+top_10_popular_start_stations_2019 <- popular_start_stations_2019 %>%
+arrange(desc(number_of_users)) %>%
+head(10)
+
+plot_ly(data = top_10_popular_start_stations_2019,
+                                        x = ~number_of_users,
+                                        y = ~reorder(start_station_name, number_of_users),
+                                        type = "bar",
+                                        name = "Number of Customers",
+                                        width = 1,
+                                        orientation = "h",
+                                        marker = list(color = "blue")
+                                        ) %>%
+                                        layout(title = "Top 10 Most Popular Start Station Docks in 2019",
+                                               xaxis = list(title = "Number of Users"),
+                                               yaxis = list(title =""), 
+                                               barmode = "group",
+                                               autosize = TRUE
+                                              )
+```
+
+在 2019最受歡迎的終點站是 MIT at Mass Ave / Amherst St最少人的是 8D QC Station 02.
+
+接下來看 2020
+
+```{r}
+# Figuring out which start stations are the most popular and the least popular in 2020
+
+popular_start_stations_2020 <- bluebikes_united %>%
+filter(year == "2020") %>%
+group_by(start_station_name) %>%
+summarise(number_of_users = n())
+
+head(popular_start_stations_2020 %>% arrange(desc(number_of_users)), 3)
+head(popular_start_stations_2020 %>% arrange(number_of_users), 3)
+```
+
+用直方圖畫出2020最熱門的十個站
+
+```{r}
+top_10_popular_start_stations_2020 <- popular_start_stations_2020 %>%
+arrange(desc(number_of_users)) %>%
+head(10)
+
+plot_ly(data = top_10_popular_start_stations_2020,
+                                        x = ~number_of_users,
+                                        y = ~reorder(start_station_name, number_of_users),
+                                        type = "bar",
+                                        name = "Number of Customers",
+                                        width = 1,
+                                        orientation = "h",
+                                        marker = list(color = "green")
+                                        ) %>%
+                                        layout(title = "Top 10 Most Popular Start Station Docks in 2020",
+                                               xaxis = list(title = "Number of Users"),
+                                               yaxis = list(title =""), 
+                                               barmode = "group",
+                                               margin = list(l = 390)
+                                              )
+
+
+
+```
+
+在 2020最受歡迎的終點站是 Central Square at Mass Ave / Essex St最少人的是Mobile Temporary Station 1.
+我們可以觀察到MIT大學的使用量從原本的第一名掉到第四名，可能與COVID-19線上授課，學生不用腳踏車通勤有關
+
+Step 3 將租借資訊視覺化到圖形上
+
+```{r}
+# First, let's create a database for coordinates
+
+boston_coordinates_data <- bluebikes_united %>% 
+filter(start_station_latitude != end_station_latitude,
+       start_station_longitude != end_station_longitude) %>%
+group_by(year, start_station_name, start_station_latitude, start_station_longitude, end_station_latitude, end_station_longitude) %>%
+summarise(total_trips = n(),
+          .groups="drop") %>%
+filter(total_trips > 100)
+
+# Then, we separate 2 databases by year
+
+pattern_2019 <- boston_coordinates_data %>% filter(year == "2019")
+pattern_2020 <- boston_coordinates_data %>% filter(year == "2020")
+
+# Creation of Boston Map:
+
+boston_coordinates <- c(left = -71.209676,
+                bottom = 42.273006,
+                right = -70.926987,
+                top = 42.467439
+                )
+
+boston_map <- get_stamenmap(bbox = boston_coordinates, zoom = 12, maptype = "toner")
+```
+
+2019的熱門租借路線
+```{r}
+# Finally, we start mapping the data
+
+# Pattern in 2019
+
+ggmap(boston_map,darken = c(0.8, "white")) +
+   geom_curve(data = pattern_2019, mapping = aes(x = start_station_longitude, 
+                                                 y = start_station_latitude, 
+                                                 xend = end_station_longitude, 
+                                                 yend = end_station_latitude, 
+                                                 alpha= total_trips
+                                                ), 
+              size = 0.5, 
+              curvature = .2,
+              color = "blue",
+              arrow = arrow(length=unit(0.2,"cm"), 
+                            ends="first", 
+                            type = "closed")) +
+    coord_cartesian() +
+    labs(title = "Popular Routes in 2019",x = NULL,y = NULL, caption = "Data by BlueBikes") +
+    theme(legend.position="none",
+          plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+2020的熱門租借路線
+```{r}
+# Pattern in 2020
+
+ggmap(boston_map,darken = c(0.8, "white")) +
+   geom_curve(data = pattern_2020, mapping = aes(x = start_station_longitude, 
+                                                 y = start_station_latitude, 
+                                                 xend = end_station_longitude, 
+                                                 yend = end_station_latitude, 
+                                                 alpha= total_trips
+                                                ), 
+              size = 0.5, 
+              curvature = .2,
+              color = "green",
+              arrow = arrow(length=unit(0.2,"cm"), 
+                            ends="first", 
+                            type = "closed")) +
+    coord_cartesian() +
+    labs(title = "Popular Routes in 2020",x=NULL,y=NULL, caption = "Data by BlueBikes") +
+    theme(legend.position="none",
+          plot.title = element_text(hjust = 0.5, face = "bold"))
+
+```
+
+從兩張地圖的差異，可以看出東北地區的單車路線在2020年突然蓬勃起來，代表人口的移動範圍增大。我覺得或許與居家辦公盛行有關，因為線上能讓民種不需考慮每天的交通，可以往更便宜的地方租或買房子。
+
+### Part B. Advanced
+
+>If there have any outlier in this data set, how would you deal with it and why?
+
+對於異常的點我會先觀察探究是否反映特殊有趣的事，如果沒有就一律採用刪除整筆資料的方法。因為資料很多，所以沒有必要用特別方法去保留那些異常數據。
+
+>Give your point of view of what you found in this data set.
+
+我發現疫情對Boston地區的單車租借量確實有顯著的影響，從一開始的使用量直方圖可以明顯發現落差。但同時數據也顯現越來越多非會員的使用者，代表共享單車系統還是有發展潛力的。後面熱門站點的統計結果也可知主要減少的使用量來自大學或公司通勤的使用者因為線上教學而減少使用。最後以熱門路線的地圖，發現2020年除了跟2019一樣接續者地鐵發展外，東北方也有新的路線趨勢。
+
+### 心得
+
+用很大的資料庫在做分析時電腦常常要跑很久，但跑出來就很有成就感，期望未來可以找到處理大量資料更有效率的方法。
