@@ -1,0 +1,564 @@
+---
+title: "0813317_江詠筑_HW7"
+author: "江詠筑"
+date: "2021/11/25"
+output: html_document
+---
+## HW7
+### Topic : Bike Rentals Regression
+> 1. Split the data set for training and testing
+> 2. Build multiple classification models
+> 3. Show confusion matrix and calculate accuracy
+> 4. Model comparison and result discussion
+
+## Install pakages  
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggcorrplot)
+library(lattice)
+library(psych)
+library(DataExplorer)
+library(reshape2)
+library(car)
+library(caret)
+library(cowplot)
+library(caTools)
+library(rpart.plot)
+library(e1071)
+library(leaps)
+library(rpart)
+library(randomForest)
+par(mfrow=c(1,1))
+
+b <- read_csv("london_merged.csv")
+
+```
+### 選擇使用Decision Trees Rnadom Forest SVM (Support Vector Machine)
+
+#### 優點：
+* 切出來的線很漂亮，擁有最大margin的特性
+* 可以很容易透過更換Kernel，做出非線性的線（非線性的決策邊界）
+
+#### 缺點：
+* 效能較不佳，由於時間複雜度為O(n²)當有超過一萬筆資料時，運算速度會慢上許多
+
+### Order & Rename Columns
+```{r}
+# order the columns and put the target variable first
+b <- b %>% select(cnt, t1, t2, hum, timestamp, season, weather_code, 
+                  wind_speed, is_weekend, is_holiday) 
+# ---  change some names for clarity str(b)  ----#
+b <- b %>% rename("Rentals" = "cnt",
+                  "Temperature" = "t1",
+                  "Feels-Like Temperature" = "t2",
+                  "Humidity" = "hum",
+                  "Season" = 'season',
+                  'Weather' = 'weather_code',
+                  'Windspeed' = 'wind_speed',
+                  'Workday' = 'is_weekend',
+                  'Holiday' = 'is_holiday')
+```
+
+### add Date Time Variables
+```{r}
+#format the Month and day as a number that can be ordered as a factor
+b$date <- as.character(b$timestamp, format = "%e/%d/%y")
+# create month day as a number that we can order as a factor
+b$Year <- as.factor(as.character(b$timestamp, format = "%Y"))
+b$Month <- as.character(b$timestamp, format = "%m")
+#b$month <- as.character(b$timestamp, format = "%m")
+b$Day <- as.character(b$timestamp, format = "%u")
+#b$day <- as.character(b$timestamp, format = "%u")
+b$Hour <- as.factor(hour(b$timestamp))
+b$timestamp <- NULL
+b$date <- NULL
+
+head(b, 5)
+```
+
+### factor recode
+```{r}
+b$Month <- factor(
+  b$Month, levels = c("01","02","03","04","05","06","07","08","09","10","11","12"),
+  labels = c('January','February', 'March', 'April',
+             'May', 'June', 'July', 'August',
+             'September','October', 'November', 'December'),
+  ordered = TRUE)
+
+#### ---  Day ----#####
+b$Day <- factor(
+  b$Day,levels = c(1,2,3,4,5,6,7),
+  labels = c('Monday','Tuesday','Wednesday','Thursday',
+             'Friday', 'Saturday','Sunday'),
+  ordered = TRUE)
+
+###  ---  Season ----  ####
+b$Season <- factor(
+  b$Season, levels = c(0,1,2,3),
+  labels = c('Spring', 'Summer', 'Fall','Winter'),
+  ordered = TRUE)
+
+#### ---  Workday --- ####
+b$Workday <- factor(b$Workday,
+                    levels = c(0,1),
+                    labels = c('Workday', 'Weekend'))
+
+#### ---- Holiday ---  ####
+b$Holiday <- factor(b$Holiday,
+                    levels = c(0,1),
+                    labels = c('Not a Holiday', 'Holiday'))
+
+####  weather    ####
+b <- b %>% filter(!(Weather %in% c(10,26)))
+#table(b$Weather)
+b$Weather <- factor(
+  b$Weather,
+  levels = c(1,2,3,4,7),
+  labels = c('Clear', 'Scattered Clouds', 'Broken Clouds', 'Cloudy','Light Rain'))
+
+b %>% glimpse()
+```
+
+### Data cleaning and visualization
+```{r}
+pal = c("olivedrab3", 'yellow', 'orange', 'grey50')
+#####   Rentals by Season & Temperature    #####
+options(repr.plot.width=12, repr.plot.height=8)
+ggplot(b, aes(Temperature, Rentals, color = Season)) + geom_point() +
+  theme_bw(base_size = 20) + scale_color_manual(values = pal) +
+  labs(title = "Rentals by Season & Temperature", x = "Temperature Celsius", y = "Total Rentals") +
+  scale_y_continuous(labels = scales::label_comma())
+```
+```{r}
+#####   Rentals by Season & Temperature & Year   #####
+ggplot(b, aes(Temperature, Rentals, color = Season)) + geom_point() +
+  theme_bw(base_size = 20) + scale_color_manual(values = pal) +
+  labs(title = "Rentals by Season, Temperature & Year", x = "Temperature Celsius", y = "Total Rentals") +
+  scale_y_continuous(labels = scales::label_comma()) +
+  facet_grid(~Year)
+```
+```{r}
+# There is limited data for 2017 so I will remove 2017 from the data 
+b <- b %>% filter(Year != "2017")
+```
+
+```{r}
+#####   Rentals by Humidity & Season     #####
+a1 = ggplot(b, aes(Humidity, Rentals, color = Season)) + geom_point() +
+  theme_bw(base_size = 16) + scale_color_manual(values = pal) + facet_grid(~Year) +
+  labs(title = "Rentals by Humidity & Season", x = "Humidity", y = "Total Rentals") +
+  scale_y_continuous(labels = scales::label_comma()) + 
+  theme(legend.position="bottom")
+####    Rentals by Windspeed & Season    #####
+b1 = ggplot(b, aes(Windspeed, Rentals, color = Season)) + geom_point() +
+  theme_bw(base_size = 18) + scale_color_manual(values = pal) + facet_grid(~Year) +
+  labs(title = "Rentals by Windspeed & Season", x = "Wind Speed", y = "Total Rentals") +
+  scale_y_continuous(labels = scales::label_comma()) + 
+  theme(legend.position="bottom")
+options(repr.plot.width=16, repr.plot.height=8)
+plot_grid(a1,b1, ncol = 2, nrow = 1)
+```
+
+```{r}
+# --- Rentals & Temperature by Season
+ggplot(b, aes(Temperature, Rentals, color = Season)) +
+  geom_jitter(width = 0.25) + scale_color_manual(values = pal) +
+  labs(y="Count of Rentals", title = "Rentals & Temperature by Season") +
+  facet_grid(~Season) + theme_bw(base_size = 18)
+```
+
+```{r}
+# ----   Rentals & Temperature by Weather 
+w = c('skyblue1','skyblue2','skyblue3','skyblue4','grey40')
+ggplot(b, aes(Temperature, Rentals, color = Weather)) + 
+  geom_jitter(width = 0.25, show.legend = F) + 
+  scale_color_manual(values = w) +
+  labs(y="Count of Rentals", title = "Rentals & Temperature by Weather") + 
+  facet_grid(~Weather) + theme_bw(base_size = 18)
+```
+
+### ANOVA (Abalysis of Variance) to find needed variables for linear regression model
+```{r}
+par(mfrow=c(1,2))
+options(repr.plot.width=16, repr.plot.height=6)
+boxplot(Rentals ~ Weather, data = b, frame = F, col = "grey40")
+boxplot(Rentals ~ Season, data = b, frame = F,col = "grey40")
+```
+
+```{r}
+par(mfrow=c(1,2))
+boxplot(Rentals ~ Month, data = b, frame = F, col = "grey40")
+boxplot(Rentals ~ Hour, data = b, frame = F, col = "grey40")
+par(mfrow=c(1,1))
+```
+```{r}
+aov.Wr <- aov(Rentals ~ Weather, data = b); summary(aov.Wr);
+aov.S <- aov(Rentals ~ Season, data = b); summary(aov.S);
+aov.M <- aov(Rentals ~ Month, data = b); summary(aov.M);
+aov.H <- aov(Rentals ~ Hour, data = b); summary(aov.H)
+```
+
+```{r}
+# Post Hoc test to identify which  group is different
+TukeyHSD(aov.Wr, which = "Weather");
+TukeyHSD(aov.S, which = "Season");
+TukeyHSD(aov.M, which = "Month");
+TukeyHSD(aov.H, which = "Hour")
+```
+
+### Multicollinearity
+```{r}
+m <- b
+# make all data types numeric
+cols <- c("Season", "Weather", "Workday", "Holiday", "Month", 
+       "Hour", "Day","Year")
+m[,cols] <- m %>% select(all_of(cols)) %>% lapply(as.numeric)
+# Dropping response variable (Y) for calculating Multicollinearity
+mc <- m %>% select(-Rentals, everything()) 
+# step 3) correlate all the data
+mc <- cor(m)
+# sum(is.na(m)); sum(is.na(mc))
+
+# Checking Variables that are highly correlated
+highlyCorrelated = findCorrelation(mc, cutoff=0.7)
+#Identifying Variable Names of Highly Correlated Variables
+highlyCorCol = colnames(mc)[highlyCorrelated]
+highlyCorCol
+```
+
+### Check the Results using VIF (Variance inflation factor)
+>當各變量線性無關時方差擴大因子為1。如果方差擴大因子過大，則說明自變量之間有較強的相關性，可以去掉方差擴大因子較大的變量或將相關的變量組合成單一變量。
+
+```{r}
+# Choose a VIF cutoff under which a variable is retained 
+# vif > 10  = multi-collinearity (Zuur et al. 2010)
+#can also reject predictors with vf 5-10
+
+# model 1
+fit1 <- lm(Rentals ~., data = m); summary(fit1)
+vif(fit1)
+```
+
+### Remove highly correlated variables
+```{r}
+# Remove highly correlated variables from the original dataset and create a new dataset
+# I will remove Feels like Temperature instead of Temperature
+cols <- c("Feels-Like Temperature", "Day")
+b <- b %>% select(everything(), - all_of(cols))
+names(b)
+```
+
+### Assessing Outliers
+```{r}
+# step 1) visualize the data for outliers
+
+par(mfrow=c(2,2))
+hist(b$Rentals, col = "grey50") # outliers at the high end
+hist(b$Temperature, col = "grey50")
+hist(b$Humidity, col = "grey50")  # outliers at the low end
+hist(b$Windspeed, col = "grey50") # windpseed may have outliers
+```
+
+```{r}
+par(mfrow=c(4,1))
+options(repr.plot.width=16, repr.plot.height=7)
+boxplot(b$Rentals, col = "grey50", horizontal = T, main = "Rentals") # outliers at the high end
+boxplot(b$Temperature, col = "grey50", horizontal = T, main ="Temperature")
+boxplot(b$Humidity, col = "grey50", horizontal = T, main = "Humidity") # outliers at the low end 
+boxplot(b$Windspeed, col = "grey50", horizontal = T, main = "Windspeed") # windpseed may have outliers
+par(mfrow=c(1,1))
+```
+
+###   Identify & Remove outliers - Rentals
+```{r}
+
+# 50% of the data falls between the quantiles
+Q <- quantile(b$Rentals, probs=c(.25, .75), na.rm = T)
+# this is the data inside of the boxplot
+iqr <- IQR(b$Rentals, na.rm = T)
+
+# remove the outlier beyond 1.5 * iqr for Rentals
+df <- b %>% filter(Rentals > (Q[1] - 1.5*iqr) & 
+                     Rentals < (Q[2] + 1.5*iqr))  
+
+# visualize the new dataset without outliers
+par(mfrow=c(2,1))
+options(repr.plot.width=16, repr.plot.height=6)
+boxplot(b$Rentals, col = "grey40", horizontal = T, 
+        main = "Rentals - Before Removing Outliers")
+boxplot(df$Rentals, col = "thistle2", horizontal = T, 
+        main = "Rentals - After Removing Outliers")
+par(mfrow=c(1,1))
+```
+
+### LINEAR REGRESSION
+#### Backward Elimination  (alpha = 0.05)
+* Splitting the dataset into the Training set and Test set
+* set an alpha level in advance and eliminate all variables that have a significance level above that alpha level
+* remove the variable with the highest p-value then rerun the model
+* remove variable with highest p-value, until only variable with significance above the alpha level remain
+* Model 1 with all variables included
+```{r}
+
+set.seed(123)
+split = sample.split(df$Rentals, SplitRatio = 0.75)
+training_set = subset(df, split == TRUE)
+test_set = subset(df, split == FALSE)
+
+m1 <- df %>% select(Rentals, # select target variable first
+            Temperature, 
+            Humidity, 
+            Season,
+            Weather,
+            Windspeed,
+            Workday,
+            Hour
+            ) %>% lm() 
+   
+summary(m1)
+```
+
+```{r}
+# check anova for F value significance
+anova(m1) # Workday - not significant
+```
+### Inetraction Terms
+```{r}
+m2 <- lm(Rentals ~ 
+           # Temperature + 
+           # Humidity +  
+           # Season +
+           Weather +
+           # Windspeed +
+           Workday +
+           Hour +
+           (Season * Temperature) +
+           (Season * Humidity) +
+           (Season * Windspeed) ,
+         data = training_set) 
+
+summary(m2)
+```
+
+```{r}
+# compare adjusted R Squared
+summary(m1)[9]
+summary(m2)[9];
+```
+
+### Model Selection Best Subset
+```{r}
+n = ncol(training_set)
+fit <- regsubsets(Rentals ~ ., data = training_set, nvmax = n)
+sfit <- summary(fit); sfit
+# best model has the largest adjutsed R-Squred
+sfit$adjr2
+which.max(sfit$adjr2) # now print the coefficients of the model
+coef(fit, which.max(sfit$adjr2))
+```
+
+```{r}
+# these are the coefficients for the best fitting model
+m3 <- lm(Rentals ~
+           Temperature +
+           Humidity + 
+           Hour,
+         data = training_set)
+summary(m3)
+```
+
+### Model Comparison
+```{r}
+cat("\nModel 1 R-Squared = ", round(as.numeric(summary(m1)[9]),4));
+cat("\nModel 2 R-Squared = ", round(as.numeric(summary(m2)[9]),4));
+cat("\nModel 3 R-Squared = ", round(as.numeric(summary(m3)[9]),4))
+```
+
+### Diagnostic Plots
+```{r}
+par(mfrow = c(2,2)); plot(m1, main = "Model 1")
+```
+
+```{r}
+par(mfrow = c(2,2)); plot(m2, main = "Model 2")
+```
+
+```{r}
+par(mfrow = c(2,2)); plot(m3, main = "Model 3")
+par(mfrow = c(1,1))
+```
+
+### Decision Tree Regression
+```{r}
+m4 = rpart(formula = Rentals ~ .,
+           data = training_set,
+           method = "anova")
+
+# view the decision tree
+par(mfrow = c(1,1))
+prp(m4, main = "Model 4")
+```
+
+### Grow the Decision Tree
+```{r}
+prn = rpart(formula = Rentals ~ .,
+            data = training_set,
+            method = "anova")
+
+# Print the Complexity Table 
+printcp(prn)# we are looking for the lowest xerror value
+```
+### Prune the Tree
+```{r}
+
+# using lowest complexity error from the cp table
+# aka. cross validation error ( optimal complexity error)
+
+ocp = prn$cptable[which.min(prn$cptable[,"xerror"]), "CP"]
+# now we can use this value to prune our tree and create a new optimized model
+m5 <- prune(prn, ocp)
+
+# compare the before and after pruning models
+# par(mfrow = c(1,2))
+# prp(prn, main = "Model before Pruning")
+par(mfrow = c(1,1))
+prp(m5, main = "Model after Pruning")
+```
+
+### Random Forest Regression
+```{r}
+set.seed(1234)
+m6 = rpart(formula = Rentals ~ .,
+           data = training_set,
+           method = "anova")
+
+prp(m6, main = "Model 6");
+```
+
+### Support Vector Machines
+```{r}
+m7 = svm(formula = Rentals ~ .,
+         data = training_set,
+         type = 'eps-regression',
+         kernel = 'linear')
+
+summary(m7)
+```
+
+### Tune the Model to Improve Accuracy
+```{r}
+#sample the data
+s1 = sample_frac(df, size = .3, replace = F)
+
+# using 10 fold Cross Validation
+t1 <- tune(svm, Rentals ~ ., data = s1, 
+           ranges = list(gamma = 2^(-1:1), cost = 2^(2:4)),
+           tunecontrol = tune.control(sampling = "fix"))
+```
+
+```{r}
+# gamma as a sequence = seq(0.001, 1, length = 10)
+t2 <- tune(svm, Rentals ~ ., data = s1, 
+           ranges = list(gamma = seq(0.001, 1, length = 10), 
+                         cost = 2^(2:4)),
+           tunecontrol = tune.control(sampling = "fix"))
+```
+
+### Apply the tuned SVM to the Training set
+```{r}
+# apply the tuned paramemeters
+m7 = svm(formula = Rentals ~ .,
+         data = training_set,
+         type = 'eps-regression',
+         kernel = 'radial',
+         gamma = 0.5,
+         cost = 0.1)
+
+summary(m7)
+```
+
+```{r}
+# apply the tuned paramemeters
+m8 = svm(formula = Rentals ~ .,
+         data = training_set,
+         type = 'eps-regression',
+         kernel = 'radial',
+         gamma = 0.112,
+         cost = 0.1)
+
+summary(m8)
+```
+
+### Predicting the Test set results
+```{r}
+# predicting the probabilities
+y_pred1 = predict(m1, newdata = test_set);
+y_pred2 = predict(m2, newdata = test_set); 
+y_pred3 = predict(m3, newdata = test_set);
+y_pred4 = predict(m4, newdata = test_set); 
+y_pred5 = predict(m5, newdata = test_set); 
+y_pred6 = predict(m6, newdata = test_set); 
+y_pred7 = predict(m7, newdata = test_set);
+y_pred8 = predict(m8, newdata = test_set)
+```
+
+###   Compute Accuracy using MSE, Variance 
+####     to calculate the R Squared Value
+> note Decison Trees often have much higher accuracy on the training set than they do on the test set. 
+> Meaning they tend to overfit the original data
+
+```{r}
+#------ model 1  --------
+MSE1 = sum((y_pred1 - test_set$Rentals)^2)/nrow(test_set)
+var.y1 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr1 = 1 - (MSE1/var.y1)
+
+#------ model 2  --------
+MSE2 = sum((y_pred2 - test_set$Rentals)^2)/nrow(test_set)
+var.y2 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr2 = 1 - (MSE2/var.y2)
+
+#------ model 3  --------
+MSE3 = sum((y_pred3 - test_set$Rentals)^2)/nrow(test_set)
+var.y3 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr3 = 1 - (MSE3/var.y3)
+
+#------ model 4  --------
+MSE4 = sum((y_pred4 - test_set$Rentals)^2)/nrow(test_set)
+var.y4 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr4 = 1 - (MSE4/var.y4)
+
+#------ model 5  --------
+MSE5 = sum((y_pred5 - test_set$Rentals)^2)/nrow(test_set)
+var.y5 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr5 = 1 - (MSE5/var.y5)
+
+#------ model 6  --------
+MSE6 = sum((y_pred6 - test_set$Rentals)^2)/nrow(test_set)
+var.y6 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr6 = 1 - (MSE6/var.y6)
+
+#------ model 7  --------
+MSE7 = sum((y_pred7 - test_set$Rentals)^2)/nrow(test_set)
+var.y7 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr7 = 1 - (MSE7/var.y7)
+
+#------ model 8  --------
+MSE8 = sum((y_pred8 - test_set$Rentals)^2)/nrow(test_set)
+var.y8 = sum((test_set$Rentals - mean(test_set$Rentals))^2)/(nrow(test_set)-1)
+Rsqr8 = 1 - (MSE8/var.y8)
+```
+
+### Assessing the Accuracy of Models
+```{r}
+cat("\nMSE Model 1 = ", MSE1, " Variance  = ", var.y1, "R Squared = ", Rsqr1);
+cat("\nMSE Model 2 =   ", MSE2, " Variance  = ", var.y2, "R Squared = ", Rsqr2);
+cat("\nMSE Model 3 = ", MSE3, " Variance  = ", var.y3, "R Squared = ", Rsqr3);
+cat("\nMSE Model 4 = ", MSE4, " Variance  = ", var.y4, "R Squared = ", Rsqr4);
+cat("\nMSE Model 5 = ", MSE5, " Variance  = ", var.y5, "R Squared = ", Rsqr5);
+cat("\nMSE Model 6 = ", MSE6, " Variance  = ", var.y6, "R Squared = ", Rsqr6);
+cat("\nMSE Model 7 = ", MSE7, " Variance  = ", var.y7, "R Squared = ", Rsqr7);
+cat("\nMSE Model 8 = ", MSE8, " Variance  = ", var.y8, "R Squared = ", Rsqr8)
+```
+
