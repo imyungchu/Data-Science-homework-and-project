@@ -1,0 +1,183 @@
+---
+title: "0813317_江詠筑_HW6"
+author: "江詠筑"
+date: "2021/11/12"
+output: html_document
+---
+
+## 1. Build different regression models.
+
+### step 1 install packages
+載入需要的套件
+```{r}
+options(scipe=999)
+library(ggplot2)
+library(MLmetrics)
+library(psych)
+library(rpart.plot)
+library(forecast)
+library(car)
+library(lubridate)
+library(tidyverse)
+library(relaimpo)
+library(RColorBrewer)
+list.files(path = "../input")
+```
+
+### step 2 load and analysis the requiring data  
+載入資料 這次選用前面作業也曾經做過的 Washington DC data set 繼續共享單車需求預測的研究主題
+```{r}
+df <- read.csv("day.csv",header = T)
+```
+
+還是不免俗地做一下基本的資料分析，這也是為了找出要用哪些變數建模必要的步驟
+
+```{r}
+dim(df)
+```
+```{r}
+head(df)
+```
+
+挑出建模要用到的變數
+
+```{r}
+df["day"]<-day(df$dteday)
+df["year"]<-year(df$dteday)
+```
+
+```{r}
+describe(df)
+```
+
+
+
+```{r}
+df <- df %>% dplyr::select(-c(instant,dteday,casual,registered))
+```
+
+```{r}
+df <- df %>% filter(year==2011)
+```
+
+```{r}
+df <- df %>% dplyr::select(-c(year,yr))
+```
+
+列出建模要用到的變數名稱
+```{r}
+names(df)
+```
+```{r}
+df$season <- factor(df$season)
+df$mnth <- factor(df$mnth)
+df$holiday <- factor(df$holiday)
+df$weekday <- factor(df$weekday)
+df$workingday <- factor(df$workingday)
+df$weathersit <- factor(df$weathersit)
+df$day <- factor(df$day)
+```
+
+```{r}
+str(df)
+```
+
+透過相關係數及散布圖嘗試找尋變數間的關係，以方便後面建模；結論與前幾次作業類似，所以不再贅述
+```{r}
+cor(df[,c(7,8,9,10,11)])
+```
+
+```{r}
+scatterplotMatrix(df[,c(7,8,9,10,11)],col="lightblue")
+```
+#### 總結: 需求受到 Season, Month, Day and Weather Conditions 影響最大
+```{r}
+par(mfcol = c(2,2))
+hist(df$cnt,main="Histogram of Demand",xlab = "Demand",col="orange")
+box()
+hist(df$temp,main="Histogram of Temperature",xlab = "Temp",col="steelblue")
+box()
+hist(df$hum,main="Histogram of Humidity",xlab = "Hum",col="steelblue")
+box()
+hist(df$windspeed,main="Histogram of Wind Speed",xlab = "Wind Speed",col="steelblue")
+box()
+```
+
+將數值型變數和類別型變都正規畫成0~1的數再建模
+
+```{r}
+df <- df %>% dplyr::select(-atemp)
+```
+
+建立linear regression模型
+```{r}
+summary(lm(log(cnt)~.,data = df))
+```
+
+一般的 p 值小於 2.2e-16，但是模型中有一些個體變量並不顯著，為了去除它們並只保留具有最高顯著性的那些，使用函數 stepAIC
+
+```{r}
+lr_model = lm(cnt~.,data = df)
+```
+
+根據這個函數的結果，最好的線性模型如下：
+```{r}
+lr_model <-lm(cnt ~ season + mnth + holiday + weathersit + temp + hum + windspeed,data = df)
+```
+
+The Multiple R-squared is about 84%
+```{r}
+summary(lr_model)
+```
+```{r}
+library(MASS)
+step <- stepAIC(lr_model, direction="both",steps = 250)
+step$anova # display result
+```
+
+## 2. Draw and explain the results from your models.
+測試 LR 模型
+```{r}
+newdata <- df %>% select_("season","mnth","holiday","weathersit","temp","hum","windspeed")
+predictions <- predict(lr_model,newdata = newdata)
+head(predictions)
+```
+
+The model to predict cycle usage based on temperature is as follows:cnt = 1214.6 + (6640.7 * temp)
+
+
+其他模型性能指標
+```{r}
+par(mfcol=c(2,1))
+hist(predictions-df$cnt,col="steelblue",main = "Histogram of residuals",xlab = "Predicted-Observed")
+grid()
+box()
+plot(df$cnt,predictions,xlab="Demand",ylab="Prediction",main="Scatterplot of Demand Vs Prediction",col="tomato",pch=15)
+grid()
+```
+
+## 3. Discussion of results by cross validation. 
+
+可以注意到紅線（預測）如何模仿藍線（觀察）
+
+```{r}
+plot(df$cnt[1:365],type='l',col="blue",main = "Observed Vs Predicted",ylab = "Daily Demand")
+lines(predictions[1:365],col="red")
+legend(0, 6000, legend=c("Observed", "Predicted"),col=c("blue", "red"),lty = 1,box.lty = 0)
+grid()
+```
+
+
+
+```{r}
+print("R^2 Score :")
+print(R2_Score(y_pred =predictions ,y_true = df$cnt))
+print("RMSE: ")
+print(RMSE(y_pred =predictions ,y_true = df$cnt))
+```
+模型的誤差約為每天 551 個單位，約為標準差的 40%
+
+## 結論
+* 該模型可以作為基線與更高級的模型或算法進行比較
+* 可以使用非線性或時間序列方法改進此模型
+* 需求受季節、月份和天氣條件等因素影響
