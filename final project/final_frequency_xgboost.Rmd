@@ -1,0 +1,111 @@
+---
+title: "HW7"
+author: "anna0813311"
+date: "2021/11/15"
+output:
+  html_document: default
+  word_document: default
+---
+```{r, echo = TRUE}
+#library(readxl)
+#file_path <- "C:/Users/anna2/Downloads/Python/bike sharing/day.xlsx"
+bike <-  read.csv("D:/data science final project/day.csv",head = TRUE)
+bike <- bike[, -c(1)]
+bike <- na.omit(bike)
+#anyNA(bike) #FALSE
+```
+
+```{r, echo = FALSE}
+library(lubridate)
+bike$dteday <- dmy(bike$dteday)
+bike_frequency <- bike
+
+season_level <- unique(bike_frequency$season)
+for (s in season_level){
+  freq <- length(bike_frequency$season[bike_frequency$season == s])
+  bike_frequency$season[bike_frequency$season == s] <- freq
+}
+
+yr_level <- unique(bike_frequency$yr)
+for (y in yr_level){
+  freq <- length(bike_frequency$yr[bike_frequency$yr == y])
+  bike_frequency$yr[bike_frequency$yr == y] <- freq
+}
+
+month_level <- unique(bike_frequency$mnth)
+for (m in month_level){
+  freq <- length(bike_frequency$mnth[bike_frequency$mnth == m])
+  bike_frequency$mnth[bike_frequency$mnth == m] <- freq
+}
+
+holi_level <- unique(bike_frequency$holiday)
+for (h in holi_level){
+  freq <- length(bike_frequency$holiday[bike_frequency$holiday == h])
+  bike_frequency$holiday[bike_frequency$holiday == h] <- freq
+}
+
+week_level <- unique(bike_frequency$weekday)
+for (w in week_level){
+  freq <- length(bike_frequency$weekday[bike_frequency$weekday == w])
+  bike_frequency$weekday[bike_frequency$weekday == w] <- freq
+}
+
+work_level <- unique(bike_frequency$workingday)
+for (w in work_level){
+  freq <- length(bike_frequency$workingday[bike_frequency$workingday == w])
+  bike_frequency$workingday[bike_frequency$workingday == w] <- freq
+}
+
+weather_level <- unique(bike_frequency$weathersit)
+for (w in weather_level){
+  freq <- length(bike_frequency$weathersit[bike_frequency$weathersit == w])
+  bike_frequency$weathersit[bike_frequency$weathersit == w] <- freq
+}
+```
+
+```{r}
+library(ggplot2)
+library(lattice)
+library(yardstick)
+library(readr)
+library(caret)
+library(e1071)
+library(corrplot)
+library(dplyr)
+library(tidyr)
+library(Matrix)
+library(ggpubr)
+library(xgboost)
+library(tidyverse)
+set.seed(1004)
+data <- bike_frequency[, -c(1, 13, 14)]
+#分train 和test 的 資料
+train.ind_xgb <- createDataPartition(data$cnt,p = 0.7,list = F)
+train = data[train.ind_xgb, ]
+test = data[-train.ind_xgb, ]
+train_x_xgb = data.matrix(train[, -12])
+train_y_xgb = train[, 12]
+test_x_xgb = data.matrix(test[, -12])
+test_y_xgb = test[, 12]
+#轉為xgboost的稀疏矩陣(決定最後的trainning和testing set)
+xgb_train = xgb.DMatrix(data = train_x_xgb,label = train_y_xgb)
+xgb_test = xgb.DMatrix(data = test_x_xgb,label = test_y_xgb)
+watchlist = list(train=xgb_train, test=xgb_test)
+#建立model
+model = xgb.train(data = xgb_train, max.depth = 2, watchlist=watchlist, nrounds = 200)
+#由test_rmse知道在nround = 172 rmse最小
+final_model = xgboost(data = xgb_test, max.depth = 2, nrounds = 172, verbose = 0)
+#(verbose = 0 表示不須印出trainning 和testing error)
+#預測
+xgb_y = predict(final_model, test_x_xgb)
+#計算mse，mae，rmse
+mse_xgb = mean((test_y_xgb -xgb_y)^2)
+mae_xgb = caret::MAE(test_y_xgb,xgb_y)
+rmse_xgb = caret::RMSE(test_y_xgb,xgb_y)
+cat("MSE: ",mse_xgb,"MAE: ",mae_xgb,"RMSE: ",rmse_xgb)
+#計算xgboost model準確率
+mape_xgb=mean(abs(test_y_xgb-xgb_y)/test_y_xgb)
+accuracy_xgb=1-mape_xgb
+accuracy_xgb
+```
+

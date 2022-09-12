@@ -1,0 +1,203 @@
+---
+title: "HW7"
+author: "anna0813311"
+date: "2021/11/15"
+output:
+  html_document: default
+  word_document: default
+---
+```{r, echo = TRUE}
+#library(readxl)
+#file_path <- "C:/Users/anna2/Downloads/Python/bike sharing/day.xlsx"
+bike <-read.csv("D:/data science final project/day.csv",head = TRUE)
+bike <- bike[, -c(1)]
+bike <- na.omit(bike)
+str(bike)
+#anyNA(bike) #FALSE
+```
+
+```{r, echo = FALSE}
+library(lubridate)
+bike$dteday <- dmy(bike$dteday)
+bike_target <- bike
+
+season_level <- unique(bike_target$season)
+for (s in season_level){
+  Cnt <- bike_target$cnt[bike_target$season == s]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$season[bike_target$season == s] <- Mean
+}
+
+yr_level <- unique(bike_target$yr)
+for (y in yr_level){
+  Cnt <- bike_target$cnt[bike_target$yr == y]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$yr[bike_target$yr == y] <- Mean
+}
+
+month_level <- unique(bike_target$mnth)
+for (m in month_level){
+  Cnt <- bike_target$cnt[bike_target$mnth == m]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$mnth[bike_target$mnth == m] <- Mean
+}
+
+holi_level <- unique(bike_target$holiday)
+for (h in holi_level){
+  Cnt <- bike_target$cnt[bike_target$holiday == h]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$holiday[bike_target$holiday == h] <- Mean
+}
+
+week_level <- unique(bike_target$weekday)
+for (w in week_level){
+  Cnt <- bike_target$cnt[bike_target$weekday == w]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$weekday[bike_target$weekday == w] <- Mean
+}
+
+work_level <- unique(bike_target$workingday)
+for (w in work_level){
+  Cnt <- bike_target$cnt[bike_target$workingday == w]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$workingday[bike_target$workingday == w] <- Mean
+}
+
+weather_level <- unique(bike_target$weathersit)
+for (w in weather_level){
+  Cnt <- bike_target$cnt[bike_target$weathersit == w]
+  Q1 <- quantile(Cnt)[2]
+  Q3 <- quantile(Cnt)[4]
+  iQR <- IQR(Cnt)
+  for(i in c(1:length(Cnt))){
+    if(Cnt[i] > (Q3 + 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+    else if(Cnt[i] < (Q1 - 1.5*iQR)){
+      Cnt[i] <- NA
+    }
+  }
+  Cnt <- na.omit(Cnt)
+  Mean <- sum(Cnt) / length(Cnt)
+  bike_target$weathersit[bike_target$weathersit == w] <- Mean
+}
+```
+
+```{r}
+library(ggplot2)
+library(lattice)
+library(yardstick)
+library(readr)
+library(caret)
+library(e1071)
+library(corrplot)
+library(dplyr)
+library(tidyr)
+library(Matrix)
+library(ggpubr)
+library(xgboost)
+library(tidyverse)
+set.seed(1004)
+data <- bike_target[, -c(1, 13, 14)]
+#分train 和test 的 資料
+train.ind_xgb <- createDataPartition(data$cnt,p = 0.7,list = F)
+train = data[train.ind_xgb, ]
+test = data[-train.ind_xgb, ]
+train_x_xgb = data.matrix(train[, -12])
+train_y_xgb = train[, 12]
+test_x_xgb = data.matrix(test[, -12])
+test_y_xgb = test[, 12]
+#轉為xgboost的稀疏矩陣(決定最後的trainning和testing set)
+xgb_train = xgb.DMatrix(data = train_x_xgb,label = train_y_xgb)
+xgb_test = xgb.DMatrix(data = test_x_xgb,label = test_y_xgb)
+watchlist = list(train=xgb_train, test=xgb_test)
+#建立model
+model = xgb.train(data = xgb_train, max.depth = 2, watchlist=watchlist, nrounds = 200)
+#由test_rmse知道在nround = 172 rmse最小
+final_model = xgboost(data = xgb_test, max.depth = 2, nrounds = 172, verbose = 0)
+#(verbose = 0 表示不須印出trainning 和testing error)
+#預測
+xgb_y = predict(final_model, test_x_xgb)
+#計算mse，mae，rmse
+mse_xgb = mean((test_y_xgb -xgb_y)^2)
+mae_xgb = caret::MAE(test_y_xgb,xgb_y)
+rmse_xgb = caret::RMSE(test_y_xgb,xgb_y)
+cat("MSE: ",mse_xgb,"MAE: ",mae_xgb,"RMSE: ",rmse_xgb)
+#計算xgboost model準確率
+mape_xgb=mean(abs(test_y_xgb-xgb_y)/test_y_xgb)
+accuracy_xgb=1-mape_xgb
+accuracy_xgb
+```
+
