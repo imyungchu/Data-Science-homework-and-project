@@ -1,0 +1,115 @@
+---
+title: "Visualize Bike Sharing Dataset"
+author: "江詠筑"
+date: "2021/10/18"
+output:
+  html_document: default
+  pdf_document: default
+---
+## HW4 Requirement
+* Basic
+Use the data you prepared to do visualized (From the course teach)  Box plot, bar plot, scatter plot, histogram…
+* Advanced
+Explain what you find and why you choose these visualization methods
+
+## Select the dataset in Washington D.C Bike sharing system
+前兩次作業使用每天記錄一次的day資料，而第三四次作業則改為使用每個小時紀錄一次的hour資料，進行較大量資料、多維度及多變量的的分析。主要著重在自然因素 (天氣、溫度、濕度) 與共享單車租借量的關係。透過 R 語言的內建繪圖系統探索資料分析（Exploratory Data Analysis，EDA），及資料前處理，例如 : 整理資料、Data cleaning。這次針對資料視覺化的主題，我決定以兩種群體(是否有購買會員)與需求量及頻率的方向去做視覺化，觀察分群之後畫出來的圖，給予推測說明，比較是否會跟沒分群時有不一樣的結果。
+```{r}
+#輸入資料
+dat <- read.csv('hour.csv')[,-1]
+str(dat)
+```
+
+## bar chart
+對這個data set而言最重要的attribute就屬共享單車租借數量(number of bike rental)，所以我先就這兩年來的租借數量與每小時租借頻率做直方圖，並且加上機率密度函數曲線，可以清楚看出每小時租借量和租借頻率分布呈現明顯右偏的圖形(skewed to the right)平均值mean也小於中位數median。
+```{r}
+#輸出租借量cnt
+options(repr.plot.width=12, repr.plot.height = 8)
+hist(dat$cnt,  xlab = "number of bicycles",ylab = "Frequency", main = "Histogram of total number of bike rentals",
+     col = 'rosybrown1', probability = T, cex.main = 2, cex.lab = 1.5, cex.axis = 1.5)
+lines(density(dat$cnt))
+```
+
+會選擇直方圖來繪製共享單車租借頻率及數量的關係是考量到可以一眼看出出租借量的分布狀況，就像在這個例子中我們就可以透過這個圖型清楚看出在這個共享單車系統的大多數狀況中每小時的租借量都會小於200台。此外，這個粉咖色也是他們單車的主題色。
+
+### pie chart
+將在此數據中的兩種使用者身分繪製成圓餅圖，選擇圓餅圖而非其他圖形也正是因為圓餅圖能直觀反映出數據分布的比例關係，可以清楚看到80%以上的使用者都有註冊會員。
+```{r}
+library(ggplot2)
+library(corrplot)
+#建構資料型態
+df = data.frame('lables' = c('Registered', 'Casual'), 'value' = c(mean(dat$registered)/(mean(dat$registered)+mean(dat$casual)), 
+                                                                  mean(dat$casual)/(mean(dat$registered)+mean(dat$casual))))
+#用ggplot套件生成基本圓餅圖
+pie = ggplot(df, aes(x="", y=value, fill=lables)) + geom_bar(stat="identity", width=1)
+#加上圓餅圖上的百分比
+pie = pie + coord_polar("y", start=0) + geom_text(aes(label = paste0(round(value*100), "%")), 
+                                                  position = position_stack(vjust = 0.5), size = 10)
+#加上顏色，我選擇橘色和番茄色，因為能給人愉悅溫暖的感覺，可以分辨清楚但又不顯突兀
+pie = pie + scale_fill_manual(values=c("tomato3", "tan1", "#55DDE0", "#999999"))
+#清除原本直角坐標的標籤，加上標題
+pie = pie + labs(x = NULL, y = NULL, fill = NULL, title = "Rgistered vs. Casual Users")
+#加上classic主題，隱藏格線
+pie = pie + theme_classic() + theme(text = element_text(size = 20),
+          axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(size = 24, hjust = 0.5, face="bold"))
+pie
+
+```
+
+圓餅圖的製作能清楚看出分布比例懸殊大，但也有將近1/5用戶為散戶，故是否註冊會員這個變因仍然是值得列入考量的。
+
+### box chart
+選用盒鬚圖探索不同類別與數值分佈的關係，根據上個圓餅圖，我們可以知道casual的用戶不多，所以預期每小時租借的散戶盒鬚圖應該也會跟註冊會員的差不多，但是會向下平移一些。
+```{r}
+# 會員與租借量的盒鬚圖
+options(repr.plot.width=10, repr.plot.height = 8)
+boxplot(x=dat$registered,dat$casual,names = c("registered","casual"),col="sienna1",
+        ylab="Bike rentals",xlab="Types of users", main = 'Bike rental vs. type of users', 
+        cex.main = 2, cex.lab = 1.5, cex.axis = 1.5)
+```
+
+由上圖可以證實「散戶租借頻率會比會員少」的預期結果，但比較特別的是casual的盒鬚圖比registered的右偏許多，反映了散戶租借借頻率會更偏少；也就是說， 當一個用戶不適會員時，我們可以預期他的租借頻率會比會員更少，因此應該鼓勵大家申辦會員。此外，兩者都有顯著數量的OutlierS，說明人類行為的難以估計XD或許極值過多會影響平均，在之後分析時要小心。
+
+### data cleaning 
+部分接續(與HW2資料庫不同個了 但程式差不多)
+
+```{r}
+dat <- dat[which(dat$windspeed != 0.0000),]
+dat$env.temp = dat$temp*(39+8) - 8
+dat$feel.temp = dat$atemp*(50+16) - 16
+dat$humidity = dat$hum*100
+dat$wsp = dat$windspeed*67
+```
+
+### Heat map
+各變數相關係數的分析熱點圖，上課聽老師和同學介紹所以試著畫畫看，因為變數有點多，弄了好久才成功。
+
+```{r}
+bike.select <- data.frame(dat$season,dat$yr,dat$mnth,dat$hr,dat$holiday,dat$weekday,dat$workingday
+                          ,dat$weathersit,dat$env.temp, dat$feel.temp,
+                          dat$humidity, dat$wsp, dat$casual, dat$registered,dat$cnt)
+names(bike.select) <- c("season","year","month","hour","holiday","weekday","workingday","weathersit"
+                        ,"temperature", "feel temperature", "humidity",
+                        "windspeed","casual","registerd", "count")
+cormat = matrix(data = 0, 15,15)
+row.names(cormat) = c("season","year","month","hour","holiday","weekday","workingday","weathersit"
+                      ,"temperature", "feel temperature", "humidity",
+                      "windspeed","casual","registerd", "count")
+colnames(cormat) = c("season","year","month","hour","holiday","weekday","workingday","weathersit"
+                     ,"temperature", "feel temperature", "humidity",
+                     "windspeed","casual","registerd", "count")
+for (i in 1:15) {
+  for (j in 1:15) {
+    cormat[i,j] = cor(bike.select[i],bike.select[j])
+  }
+}
+corrplot(cormat, type = "upper", order = "hclust", sig.level = 0.01, insig = "blank", tl.cex=1.4)
+```
+
+從heat map也可明顯看出「是會員」與「單車租借量」的相關係數相當高，而「是散戶」與「單車租借量」的關係就沒那麼相關，說明很督共享單車有會員制度的設計是很重要的，因為會員可以顯著提升租借頻率，進而增加共享單車平台的獲利。
+
+### 總結
+在HW4中我嘗試之前沒有試過的更大的資料，繪製更複雜的圖形，並嘗試找出特別的特色去說明驗證，感覺對資料的處理分析更有概念了!謝謝助教/教授的教導
