@@ -1,0 +1,188 @@
+---
+title: "0813317_江詠筑_HW2"
+author: "江詠筑"
+date: "2021/10/5"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+#  Topic : Forecast the rental demand for bicycle-sharing transportation systems 共享單車需求預測
+*  A. use R to analyze the data set that you select.
+*  B. Explain the results you obtain.
+*  C. Discuss possible problems you plan to investigate for future studies.
+
+##  A. 分析整理數據的類別及量值大小，觀察數值是否有不合理的狀況
+###  Step 1 : Read data 
+```{r}
+day = read.csv('day.csv');day #讀數據 用RStudio內建import Dataset"day.csv"
+names(day) #輸出此數據的特徵名稱
+dim(day) 
+``` 
+####  此數據包含731天中16個變數特徵的資料( 731 X 16 )  
+####  And the features contain two types : 
+##### (1)  Categorical  類別型特徵
+*  Season(spring, summer, etc.)
+*  instant(no. of data)
+*  date(1/1~12/31)
+*  Year(2011,2012)
+*  Month(Jan, Feb, etc.)
+*  Holiday(0 or 1)
+*  Weekday(Sunday, Monday, etc.)
+*  Working day(0 or 1)
+*  Weathersit(clear, misty,etc.)
+
+#####  (2)  Quantitative  數量型特徵
+*  Temperature
+*  Feeling temperature
+*  Humidity
+*  Wind speed
+*  Casual
+*  Registered
+*  Total count
+
+###  Step 2 : Data Overview
+```{r}
+class(day) #class : 資料型態
+```
+####  data.frame 是長度相同的向量的集合。每個向量代表一列，每個向量可以是不同的數據類型（例如，字符、整數、因子）。
+
+```{r}
+str(day) #該str()函數可用於檢查列的數據類型
+```
+####  包含16個特徵變數的結構以及關於每列的類、長度(均為731列)和內容的信息。
+
+```{r}
+summary(day) #每列的匯總統計
+```
+####  The summmary of data show the statistic overview of these attributes.
+*  根據summary函數提供的表格，我發現在這個資料庫中很多程度數值(Quantitative value)都已經被正規化成介於0~1的數值，為了直觀理解並分析數據，我決定用公式還原原始數據。
+
+```{r}
+#將體感溫度正規數據還原
+day$feel.temp = day$atemp*(50+16) - 16
+summary(day$feel.temp)
+```
+####  此地區平常約為攝氏15度，平均而言是適合騎乘腳踏車的溫度，但冬天最冷可到零下十度，夏天最熱可以到39度，溫差很大
+```{r}
+# 將濕度正規數據還原
+day$humidity = day$hum*100
+summary(day$humidity)
+```
+####  如此一來就可以清楚知道實際數值了，理論上濕度大於68才會開始令一半人口感到不適，所以此地的濕度偏低，應該不常下雨。也可以觀察到濕度的最小值有0；很可能是有missing data，之後HW3要考慮對該feature進行data cleaning。
+
+```{r}
+# 將風速正規數據還原
+day$wsp = day$windspeed*67
+summary(day$wsp)
+```
+####  此地區的風速很和緩，即便最大值34km/h 也不至於行走困難，理論上適合騎車。
+
+```{r}
+# convert environmental temperature in to general scale 
+day$env.temp = day$temp*(39+8) - 8
+```
+###  Step 3 Some diagram for all dimensions of feature to  **cnt**  ( The number of demand/day ) 
+```{r}
+#display count
+#兩年來的騎乘需求量統計數據
+summary(day$cnt)
+```
+```{r}
+#以兩年來每日借出腳踏車量 繪製直方圖 觀察出借頻率
+options(repr.plot.width=12, repr.plot.height = 8)
+hist(day$cnt,  xlab = "no, of bicycles",ylab = "Frequency", main = "Histogram of total no. of bike rentals",
+     col = '#2F4858', probability = F, cex.main = 2, cex.lab = 1.5, cex.axis = 1.5)
+lines(density(day$cnt))
+```
+
+
+####  由上圖可觀察到每天借出車輛大致上呈現常態分佈，平均每天租借量約為4504輛，但需求量最大值8714和最小值22相差很大(8714-22)，所以**為了避免站點供需失衡或調度不及而影響共享單車平台的獲利及使用者滿意度，藉由觀察整理以有效預測需求量有其必要性。**
+
+####  此外，由於本人是第一次進行資料分析，所以選用資料量較少且方便分析的每日而非每小時的資料，待熟悉數據分析流程後可進階至每小時的時間序列分析。
+
+
+
+##  B. 分析各個特徵值與租借單車需求量的關係，觀察各特徵如何影響租借單車需求量，並嘗試歸納結論。  
+###  1.體感溫度與租借單車需求量的關係
+```{r}
+
+scatter.smooth(day$feel.temp,day$cnt, col = "#33658A", xlab = "Feel temperature", ylab = "no. of bike rentals", 
+               main = "Bike rentals vs. feel temperature", cex.main = 2, cex.lab = 1.5, cex.axis = 1.3)
+```
+
+####  由上圖可看出體感溫度與租借單車需求量有正相關，且約在21度達到最大租借量，說明體感溫度與租借量有交互關係，且溫度越高人們越喜歡租借共享單車。但若太熱也會減少意願。
+
+
+###  2.濕度與租借單車需求量的關係
+```{r}
+#bicycles with humidity
+hm = aggregate(cnt~humidity, mean, data = day)
+plot(hm$humidity, hm$cnt,  col = "#33658A", lwd = 2.5,
+     xlab = "humidity", ylab = "no. of bicycles", main = "Bike rentals vs. humidity",
+    cex.main = 2, cex.lab = 1.5, cex.axis = 1.5, cex = 1.2)
+```
+
+####  由上圖可看出濕度與租借單車需求量有負相關，且約在濕度50達到最大租借量，符合[戶外濕度及人體舒適度的研究結果](https://www.reference.com/science/comfortable-humidity-level-outdoors-a56b2ecf82004523)大多數的人在溼度小於45-55是感覺最舒適，也說明濕度與租借量有交互關係，且濕度越高人們越不喜歡租借共享單車。
+
+###  3.風速與租借單車需求量的關係
+```{r}
+#bike rentas vs. wind speed
+wsp = aggregate(cnt~wsp, mean, data = day)
+plot(wsp$wsp, wsp$cnt, col = "#33658A", lwd = 2.5,
+     xlab = "wind speed(kmph)", ylab = "no. of bicycles", main = "Average bike rentals vs. wind speed",
+    cex.main = 2, cex.lab = 1.5, cex.axis = 1.5, cex = 1.2)
+```
+
+####  由上圖可看出風速大小與租借單車需求量有負相關，且約在 15km/hr 達到最大租借量，說明風速與租借量有交互關係，且風速越快越不傾向租借共享單車。例如新竹這種風速極大的地方，別說是腳踏車了，連機車的騎不穩，所以這個負相關結論就很合理。
+
+###  4.季節與租借單車需求量的關係
+```{r}
+# count of bicycles with season
+options(repr.plot.width=8, repr.plot.height = 4)
+options(scipen = 3)
+tw = aggregate(cnt~season, sum , data = day)
+xx <- barplot(tw$cnt, col = c("#55DDE0",  "#F6AE2D", "#F26419", "#33658A", "#2F4858", "#999999"),
+              ylim = c(0,1500000), names.arg = c("Spring", "Summer", "Fall", "Winter"),
+        xlab = "season", ylab = "no. of bike rentals", main = "Bike rentals vs. season",
+       cex.main = 2, cex.lab = 1.5, cex.axis = 1.3, cex = 1.2)
+text(x = xx, y = tw$cnt, label = tw$cnt, pos = 3, cex = 1.2, col = "red")
+
+```
+
+####  由上圖可觀察出共享單車需求量在秋季時有最大值，符合常理，但很意外地，在春季時居然是租借量最少的；應該是最少的寒冷冬天(華盛頓特區的冬天可到零下十度)卻仍有不少租借量。與本人上次作業推測的在春季秋季可能是共享單車最大和次大租借量完全大相逕庭，我覺得這個不合常理關係的問題可能與資料未進行清理、月分與季節的的對應不精確有關，之後的作業三可以根據季節、天氣的各筆資料先進行data cleaning再做數據分析。
+
+###  5.視覺化所有特徵之間的相關程度
+```{python}
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import warnings
+warnings.filterwarnings('ignore')
+
+day = pd.read_csv('day.csv')
+plt.figure(figsize = (16, 10))
+sns.heatmap(day.corr(), annot = True, cmap="YlGnBu")
+plt.show()
+```
+
+####  由上圖可知在此數據中影響共想單車需求量最大的因素是是否註冊會員，其次是溫度，再來才是節日平日假日、季節月份。所以之後再進一步分析或預測時，應該要將對共享單車需求量影響大的溫度等特徵調整為權重大的變數，可能會更精確的預測。
+
+
+##  C. 結論及未來想研究的方向
+
+###  1.本次數據分析結論
+
+*  會員租借單車和散戶租借單車的正相關性都很高，散戶自行車使用量增加時會員用戶數目也會增加。
+*  整體單車租賃中，已註冊之會員用戶單車租賃件數超過80%。
+*  體感溫度和環境溫度也呈正相關。
+*  平均單車租賃件數有隨着體感溫度增加而增加的傾向，但如果超過攝氏34度，平均單車租賃件數就會急劇減少。
+*  空氣溼度高或風速大時，自行車租賃件數有減少的趨勢。
+*  秋季平均單車租賃量最高，春季最低。
+*  如果是正常工作日，與非工作日相比，平均單車租賃量會更高。
+*  平日高峰期平均可租賃400輛以上，週末租賃300-400輛。可見在華盛頓特區的使用者租借共享單車的原因主要應是通勤需求，符合當初設立共享單車系統以配合大眾運輸，完成最後一哩路的初衷。
+
+###  2.未來研究方向
+
+####  可以先進行data cleaning再做分析整理，或是新增有每小時的資料、自記蒐集更新的資料或是不同地區的資料，以做更實用的**影響共享單車需求**之數據分析。
+
