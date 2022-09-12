@@ -1,0 +1,87 @@
+---
+title: "0813317_江詠筑_HW3"
+author: "江詠筑"
+date: "2021/10/13"
+output: html_document
+---
+
+## Something about HW3
+*  Use R or the other software to analyze the data set with missing data (NA) that you select
+*  Try to solve the issues of missing values and the other types of data errors
+*  Explain the results you obtain
+*  Discuss possible problems you plan to investigate for future studies
+
+## TOPIC : [Bike Sharing in Washington D.C. Dataset](https://www.kaggle.com/marklvl/bike-sharing-dataset)
+在前幾次的作業我都使用**每天一筆**的資料來分析，但覺得資訊過於分散而且不即時，對於未來想進行共享單車需求預測的幫助不大，所以這次選擇使用**每小時一筆**的各個特徵及租借量資料來做分析。
+
+### 將這次的作業分成三個部分 :
+(1) Read and view data
+(2) Data cleaning and generalized
+(3) Conclusion and future planning
+
+## (1) Read and preview data
+The data contain the values of 17 variables every hour in two years (Total 17379 objectives) 
+* Read data ( 不知道為甚麼html檔會全列出來 要麻煩您往後滑17379列>< )
+```{r}
+data <- read.csv("hour.csv"); data #read csv file
+```
+
+* preview data (這裡跟前面作業相同，同樣是影響共享單車需求之17個變數的每小時資訊，只是記錄頻率從每天變成每小時)
+```{r}
+class(data)
+str(data)
+data[c(1, 2, 3, 4, 5), ]
+data[1:5, ]
+```
+
+與每天記錄的資料比較，以小時記錄的資料多了"hr"的變數。其餘內容都與之前作業相似，所以針對上次作業觀察到可能有missing data的windspeed變數，再進行一次preview，觀察是否與上次有相同不合理數值存在。
+
+```{r windspeed}
+summary(data$windspeed)
+```
+
+最小值仍有"0"出現，因為風速絕對是大於零，所以推測windspeed變數有missing data，下一步會將等於零的不合理數值挑出來
+
+## (2) Data cleaning and generalized
+
+* data cleaning
+因為我使用的資料庫數據很多(17379筆)，所以我選擇把不合理的windspeed數據整列刪除。
+```{r}
+# 因為風速不可能等於零
+# 所以一定有遺失或沒記到的資料，為了避免影響之後預測結果，應先整理或刪除
+data <- data[which(data$windspeed != 0.0000),]
+```
+
+* data generalized
+因為蒐集到的資料是已經被正規化為0~1之間的數，但為了分析研究的方便，我選擇還原成常規(平常使用的規格)
+```{r}
+# 將介於0~1的環境溫度還原成攝氏溫度
+data$env.temp = data$temp*(39+8) - 8
+head(data)
+is.integer(data)
+is.null(data)
+```
+```{r}
+# 將介於0~1的濕度還原回相對濕度
+data$humidity = data$hum*100
+summary(data$humidity)
+```
+
+```{r}
+# 將介於0~1的風速還原(伸縮)
+data$wsp = data$windspeed*67
+summary(data$wsp)
+```
+
+## (3) Conclusion and future planning
+
+這次的作業我首先針對所有變數進行全覽，再一一檢查，發現windspeed變數有不合理的狀況產生，因為數據夠多所以選擇以簡單的刪除方法處理；至於一些數值被正規化可能不方便分析的問題，我也以數學公式還原成常規尺度。這兩次作業已經將共享單車需求量與各變數的關係做基礎的理解了，期望下次可以針對不同群體(有無會員)的租借量去做更進一步的多變量分析。 針對類別行變數也考慮以卡方檢定來做檢定。
+```{r}
+#bike rentals vs. wind speed
+wsp = aggregate(cnt~wsp, mean, data = data)
+plot(wsp$wsp, wsp$cnt, col = "#33658A", lwd = 2.5,
+     xlab = "wind speed(kmph)", ylab = "no. of bicycles", main = "Average bike rentals vs. wind speed",
+    cex.main = 2, cex.lab = 1.5, cex.axis = 1.5, cex = 1.2)
+```
+
+可以看到經過data cleaning 後 風速的資料的圖形已經變得很正常，沒有不合理的點。也可準確地說明風速與共享單車租借量有關係，但是否有因果性還要下回以更多角度分析驗證。
